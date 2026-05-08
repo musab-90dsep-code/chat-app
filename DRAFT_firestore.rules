@@ -1,0 +1,117 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Primitive Definition
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isSignedIn() { return request.auth != null; }
+
+    // Validation: User
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'photoURL', 'status'])
+        && data.uid == request.auth.uid
+        && data.email is string && data.email.size() <= 200
+        && data.displayName is string && data.displayName.size() <= 100
+        && data.photoURL is string && data.photoURL.size() <= 500
+        && data.status in ['online', 'offline']
+        && (data.get('lastSeen', 0) is number);
+    }
+
+    // Validation: Chat
+    function isValidChat(data) {
+      return data.keys().hasAll(['participants'])
+        && data.participants is list
+        && data.participants.size() >= 2
+        && data.participants.size() <= 50
+        && (data.get('lastMessage', '') is string)
+        && (data.get('lastMessageTime', 0) is number);
+    }
+
+    // Validation: Message
+    function isValidMessage(data) {
+      return data.keys().hasAll(['text', 'senderId', 'createdAt'])
+        && data.text is string && data.text.size() <= 5000
+        && data.senderId == request.auth.uid
+        && data.createdAt is number;
+    }
+
+    // Validation: Call
+    function isValidCall(data) {
+      return data.keys().hasAll(['callerId', 'calleeId', 'status', 'type', 'createdAt'])
+        && data.callerId is string && data.callerId.size() <= 128
+        && data.calleeId is string && data.calleeId.size() <= 128
+        && (data.callerId == request.auth.uid || data.calleeId == request.auth.uid)
+        && data.status in ['ringing', 'accepted', 'rejected', 'ended']
+        && data.type in ['audio', 'video']
+        && data.createdAt is number
+        && (data.get('offer', {}) is map)
+        && (data.get('answer', {}) is map);
+    }
+
+    // Validation: Candidate
+    function isValidCandidate(data) {
+      return data.keys().hasAll(['candidate', 'sdpMid', 'sdpMLineIndex'])
+        && data.candidate is string && data.candidate.size() <= 2000
+        && data.sdpMid is string && data.sdpMid.size() <= 100
+        && data.sdpMLineIndex is number;
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId);
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(userId) && userId == request.auth.uid && isValidUser(incoming());
+      allow update: if isSignedIn() && isValidId(userId) && userId == request.auth.uid && isValidUser(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'status', 'lastSeen']);
+    }
+
+    match /chats/{chatId} {
+      allow get: if isSignedIn() && isValidId(chatId) && request.auth.uid in resource.data.participants;
+      allow list: if isSignedIn() && request.auth.uid in resource.data.participants;
+      allow create: if isSignedIn() && isValidId(chatId) && isValidChat(incoming()) && request.auth.uid in incoming().participants;
+      allow update: if isSignedIn() && isValidId(chatId) && request.auth.uid in existing().participants
+        && incoming().diff(existing()).affectedKeys().hasOnly(['lastMessage', 'lastMessageTime']);
+    }
+
+    match /chats/{chatId}/messages/{messageId} {
+      allow read: if isSignedIn() && isValidId(chatId) && isValidId(messageId) 
+        && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+      allow create: if isSignedIn() && isValidId(chatId) && isValidId(messageId)
+        && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants
+        && isValidMessage(incoming());
+    }
+
+    match /calls/{callId} {
+      allow get: if isSignedIn() && isValidId(callId) && (request.auth.uid == resource.data.callerId || request.auth.uid == resource.data.calleeId);
+      allow list: if isSignedIn() && (request.auth.uid == resource.data.callerId || request.auth.uid == resource.data.calleeId);
+      allow create: if isSignedIn() && isValidId(callId) && isValidCall(incoming()) && incoming().callerId == request.auth.uid;
+      allow update: if isSignedIn() && isValidId(callId) 
+        && (request.auth.uid == existing().callerId || request.auth.uid == existing().calleeId)
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'answer', 'offer']);
+    }
+
+    match /calls/{callId}/callerCandidates/{candidateId} {
+      allow get, list: if isSignedIn() && isValidId(callId) && isValidId(candidateId)
+        && (request.auth.uid == get(/databases/$(database)/documents/calls/$(callId)).data.callerId || request.auth.uid == get(/databases/$(database)/documents/calls/$(callId)).data.calleeId);
+      allow create: if isSignedIn() && isValidId(callId) && isValidId(candidateId)
+        && request.auth.uid == get(/databases/$(database)/documents/calls/$(callId)).data.callerId
+        && isValidCandidate(incoming());
+    }
+
+    match /calls/{callId}/calleeCandidates/{candidateId} {
+      allow get, list: if isSignedIn() && isValidId(callId) && isValidId(candidateId)
+        && (request.auth.uid == get(/databases/$(database)/documents/calls/$(callId)).data.callerId || request.auth.uid == get(/databases/$(database)/documents/calls/$(callId)).data.calleeId);
+      allow create: if isSignedIn() && isValidId(callId) && isValidId(candidateId)
+        && request.auth.uid == get(/databases/$(database)/documents/calls/$(callId)).data.calleeId
+        && isValidCandidate(incoming());
+    }
+  }
+}

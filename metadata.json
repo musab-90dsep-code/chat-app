@@ -1,0 +1,6 @@
+{
+  "name": "Chat & Call App",
+  "description": "A real-time chatting and calling application featuring text messaging and WebRTC-based video/audio calls.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": []
+}

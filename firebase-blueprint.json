@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile data",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "status": { "type": "string", "enum": ["online", "offline"] },
+        "lastSeen": { "type": "number" }
+      },
+      "required": ["uid", "email", "displayName"]
+    },
+    "Chat": {
+      "title": "Chat",
+      "description": "A conversation between two or more users",
+      "type": "object",
+      "properties": {
+        "participants": { "type": "array", "items": { "type": "string" } },
+        "lastMessage": { "type": "string" },
+        "lastMessageTime": { "type": "number" }
+      },
+      "required": ["participants"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "A message in a chat",
+      "type": "object",
+      "properties": {
+        "text": { "type": "string" },
+        "senderId": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["text", "senderId", "createdAt"]
+    },
+    "Call": {
+      "title": "Call",
+      "description": "WebRTC call state",
+      "type": "object",
+      "properties": {
+        "callerId": { "type": "string" },
+        "calleeId": { "type": "string" },
+        "status": { "type": "string", "enum": ["ringing", "accepted", "rejected", "ended"] },
+        "offer": { "type": "object" },
+        "answer": { "type": "object" },
+        "type": { "type": "string", "enum": ["audio", "video"] },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["callerId", "calleeId", "status", "type", "createdAt"]
+    },
+    "Candidate": {
+      "title": "ICE Candidate",
+      "description": "WebRTC ICE Candidate",
+      "type": "object",
+      "properties": {
+        "candidate": { "type": "string" },
+        "sdpMid": { "type": "string" },
+        "sdpMLineIndex": { "type": "number" }
+      },
+      "required": ["candidate", "sdpMid", "sdpMLineIndex"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Users"
+    },
+    "/chats/{chatId}": {
+      "schema": { "$ref": "#/entities/Chat" },
+      "description": "Chats"
+    },
+    "/chats/{chatId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/Message" },
+      "description": "Chat Messages"
+    },
+    "/calls/{callId}": {
+      "schema": { "$ref": "#/entities/Call" },
+      "description": "WebRTC Calls"
+    },
+    "/calls/{callId}/callerCandidates/{candidateId}": {
+      "schema": { "$ref": "#/entities/Candidate" },
+      "description": "ICE Candidates for Caller"
+    },
+    "/calls/{callId}/calleeCandidates/{candidateId}": {
+      "schema": { "$ref": "#/entities/Candidate" },
+      "description": "ICE Candidates for Callee"
+    }
+  }
+}
